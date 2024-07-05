@@ -1,0 +1,22 @@
+{
+  "name": "fb-tools",
+  "version": "1.0.0",
+  "description": "\"some fb tools\"",
+  "main": "index.js",
+  "type": "module",
+  "dependencies": {
+    "axios": "^1.6.8",
+    "cli-color": "^2.0.4",
+    "lodash": "^4.17.21",
+    "ora": "^8.0.1",
+    "puppeteer": "^22.6.5",
+    "puppeteer-core": "^22.12.1",
+    "speakeasy": "^2.0.0"
+  },
+  "scripts": {
+    "check-email": "npm run check-email.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Phuc Nguyen",
+  "license": "ISC"
+}
