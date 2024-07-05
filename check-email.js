@@ -3,6 +3,7 @@ import fs from "fs";
 import axios from "axios";
 import puppeteer from "puppeteer";
 import { promises as fsp } from "fs";
+import { waitFor } from "./utils.js";
 
 /**
  * Main process function
@@ -11,18 +12,38 @@ import { promises as fsp } from "fs";
  */
 const main = async () => {
   const key = process.argv[2];
-  const emails = await listEmails("emails.txt");
   const checked = await listEmails("checked.txt");
-  const proxy = await genProxy(key);
+  const emails = (await listEmails("emails.txt")).filter(
+    (i) => !checked.includes(i),
+  );
   const chunks = _.chunk(emails, 10);
-  console.log(`Proxy: ${proxy}`);
 
   for (const chunk of chunks) {
-    const promises = chunk.map((email) => verifiedEmail(checked, email, proxy));
-    await Promise.all(promises);
+    await runBatch(chunk, key);
   }
 
   console.log(`Done!`);
+};
+
+/**
+ * Perform batch
+ *
+ * @param String email
+ * @return Boolean
+ */
+const runBatch = async (emails, key) => {
+  const proxy = await getProxy(key);
+  console.log(`Proxy: ${proxy}`);
+  console.log("-----------------------");
+
+  const promises = emails.map((email) => verifiedEmail(email, proxy));
+  const responses = await Promise.all(promises);
+
+  if (responses.every((i) => i)) return true;
+
+  await waitFor(10000);
+
+  return runBatch(emails, key);
 };
 
 /**
@@ -31,16 +52,12 @@ const main = async () => {
  * @param String email
  * @return Boolean
  */
-const verifiedEmail = async (checked, email, proxy) => {
-  if (checked.includes(email)) return false; // ignore if email is checked
-
-  saveLogs(email, "checked.txt");
-
+const verifiedEmail = async (email, proxy) => {
   const options = [
     "--disable-notifications",
     "--no-sandbox",
     "--enable-gpu",
-    `--window-size=390,840`,
+    "--window-size=390,840",
   ];
 
   if (proxy) {
@@ -58,15 +75,30 @@ const verifiedEmail = async (checked, email, proxy) => {
 
   try {
     const page = await browser.newPage();
-    await page.goto("https://x.com/i/flow/password_reset", {
+    await page.goto("https://x.com/i/flow/login", {
       waitUntil: ["domcontentloaded", "networkidle0"],
     });
 
-    await page.type("input[name='username']", email);
+    await page.type("input[name='text']", email);
     await page.keyboard.press("Enter");
-    await page.waitForSelector('input[name="text"]', { timeout: 3000 });
+    const isValidLogin = await validLogin(page);
+    const isSuspicious = await suspicious(page);
+
+    if (isSuspicious) {
+      console.log("Suspicious login prevented");
+      await browser.close();
+      return false;
+    }
+
+    if (!isValidLogin && !isSuspicious) {
+      saveLogs(email, "checked.txt");
+      await browser.close();
+      return true;
+    }
+
     await browser.close();
     saveLogs(email, "output.txt");
+    saveLogs(email, "checked.txt");
     console.log(`Email đã đăng ký: ${email}`);
 
     return true;
@@ -77,18 +109,65 @@ const verifiedEmail = async (checked, email, proxy) => {
 };
 
 /**
- * Generate proxy
+ * Suspicious login prevented
  *
+ * @param  Object page
+ * @return Boolean
+ */
+export const suspicious = async (page) => {
+  try {
+    const element = await page.waitForSelector(
+      'button[data-testid="OCF_CallToAction_Button"] > div > span > span',
+      { timeout: 3000 },
+    );
+    const value = await element.evaluate((el) => el.textContent);
+
+    return !!value && value === "Got it";
+  } catch (e) {
+    return false;
+  }
+};
+
+/**
+ * Check is valid login
+ *
+ * @param  Object page
  * @return Array
  */
-const genProxy = async (key) => {
-  const proxy = await getProxy(key);
+const validLogin = async (page) => {
+  return (await hasPasswordField(page)) || (await hasPhoneField(page));
+};
 
-  if (!proxy) {
-    return await changeProxy(key);
+/**
+ * Check can fill password
+ *
+ * @param  Object page
+ * @return Array
+ */
+const hasPasswordField = async (page) => {
+  try {
+    await page.waitForSelector('input[name="password"]', { timeout: 5000 });
+    return true;
+  } catch (e) {
+    return false;
   }
+};
 
-  return proxy;
+/**
+ * Check can fill phone
+ *
+ * @param  Object page
+ * @return Array
+ */
+const hasPhoneField = async (page) => {
+  try {
+    await page.waitForSelector('input[data-testid="ocfEnterTextTextInput"]', {
+      timeout: 5000,
+    });
+    return true;
+  } catch (e) {
+    return false;
+  }
 };
 
 /**
@@ -98,6 +177,9 @@ const genProxy = async (key) => {
  */
 const getProxy = async (key) => {
   try {
+    console.log("Loading new proxy...");
+    await changeProxy(key);
+
     const proxy = await axios.get(`http://api.proxyfb.com/api/getProxy.php`, {
       params: {
         key,
