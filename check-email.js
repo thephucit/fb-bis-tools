@@ -1,9 +1,14 @@
-import _ from "lodash";
-import fs from "fs";
-import axios from "axios";
-import puppeteer from "puppeteer";
-import { promises as fsp } from "fs";
-import { waitFor } from "./utils.js";
+import _ from 'lodash';
+import clc from 'cli-color';
+import puppeteer from 'puppeteer';
+import {
+  waitFor,
+  getProxy,
+  saveLogs,
+  listEmails,
+  loadCommonResources,
+  welcomeMsg,
+} from './utils.js';
 
 /**
  * Main process function
@@ -11,18 +16,27 @@ import { waitFor } from "./utils.js";
  * @return Void
  */
 const main = async () => {
+  await welcomeMsg();
+
+  // Load common resources
   const key = process.argv[2];
-  const checked = await listEmails("checked.txt");
-  const emails = (await listEmails("emails.txt")).filter(
+  const resources = await loadCommonResources();
+
+  if (_.isEmpty(resources)) {
+    return console.log(clc.red('Missing common resources!'));
+  }
+
+  const checked = await listEmails('checked.txt');
+  const emails = (await listEmails('emails.txt')).filter(
     (i) => !checked.includes(i),
   );
   const chunks = _.chunk(emails, 10);
 
   for (const chunk of chunks) {
-    await runBatch(chunk, key);
+    await runBatch(chunk, key, resources);
   }
 
-  console.log(`Done!`);
+  return console.log(clc.green('Done!'));
 };
 
 /**
@@ -31,19 +45,21 @@ const main = async () => {
  * @param String email
  * @return Boolean
  */
-const runBatch = async (emails, key) => {
+const runBatch = async (emails, key, resources) => {
   const proxy = await getProxy(key);
-  console.log(`Proxy: ${proxy}`);
-  console.log("-----------------------");
+  console.log(clc.yellow(`Proxy: ${proxy}`));
+  console.log('-----------------------------');
 
-  const promises = emails.map((email) => verifiedEmail(email, proxy));
+  const promises = emails.map((email) =>
+    verifiedEmail(email, proxy, resources),
+  );
   const responses = await Promise.all(promises);
 
   if (responses.every((i) => i)) return true;
 
-  await waitFor(10000);
+  await waitFor(resources.waitFor);
 
-  return runBatch(emails, key);
+  return runBatch(emails, key, resources);
 };
 
 /**
@@ -52,12 +68,12 @@ const runBatch = async (emails, key) => {
  * @param String email
  * @return Boolean
  */
-const verifiedEmail = async (email, proxy) => {
+const verifiedEmail = async (email, proxy, resources) => {
   const options = [
-    "--disable-notifications",
-    "--no-sandbox",
-    "--enable-gpu",
-    "--window-size=390,840",
+    '--disable-notifications',
+    '--no-sandbox',
+    '--enable-gpu',
+    '--window-size=390,840',
   ];
 
   if (proxy) {
@@ -75,31 +91,37 @@ const verifiedEmail = async (email, proxy) => {
 
   try {
     const page = await browser.newPage();
-    await page.goto("https://x.com/i/flow/login", {
-      waitUntil: ["domcontentloaded", "networkidle0"],
+    await page.goto(resources.verify_url, {
+      waitUntil: ['domcontentloaded', 'networkidle0'],
     });
 
-    await page.type("input[name='text']", email);
-    await page.keyboard.press("Enter");
-    const isValidLogin = await validLogin(page);
-    const isSuspicious = await suspicious(page);
+    await page.type(resources.input_email, email);
+    await page.keyboard.press('Enter');
+
+    const [isValidLogin, isSuspicious] = (
+      await Promise.allSettled([
+        validLogin(page, resources),
+        suspicious(page, resources),
+      ])
+    ).map((i) => _.get(i, 'value', false));
 
     if (isSuspicious) {
-      console.log("Suspicious login prevented");
+      console.log(clc.red('Suspicious login prevented.'));
       await browser.close();
       return false;
     }
 
     if (!isValidLogin && !isSuspicious) {
-      saveLogs(email, "checked.txt");
+      console.log(clc.green(`Email available: ${email}`));
+      saveLogs(email, 'checked.txt');
       await browser.close();
       return true;
     }
 
     await browser.close();
-    saveLogs(email, "output.txt");
-    saveLogs(email, "checked.txt");
-    console.log(`Email đã đăng ký: ${email}`);
+    saveLogs(email, 'output.txt');
+    saveLogs(email, 'checked.txt');
+    console.log(clc.red(`Email registered: ${email}`));
 
     return true;
   } catch (e) {
@@ -114,15 +136,14 @@ const verifiedEmail = async (email, proxy) => {
  * @param  Object page
  * @return Boolean
  */
-export const suspicious = async (page) => {
+export const suspicious = async (page, resources) => {
   try {
-    const element = await page.waitForSelector(
-      'button[data-testid="OCF_CallToAction_Button"] > div > span > span',
-      { timeout: 3000 },
-    );
+    const element = await page.waitForSelector(resources.suspicious, {
+      timeout: 3000,
+    });
     const value = await element.evaluate((el) => el.textContent);
 
-    return !!value && value === "Got it";
+    return !!value && value === resources.suspicious_text;
   } catch (e) {
     return false;
   }
@@ -134,8 +155,11 @@ export const suspicious = async (page) => {
  * @param  Object page
  * @return Array
  */
-const validLogin = async (page) => {
-  return (await hasPasswordField(page)) || (await hasPhoneField(page));
+const validLogin = async (page, resources) => {
+  return (
+    (await hasPasswordField(page, resources)) ||
+    (await hasPhoneField(page, resources))
+  );
 };
 
 /**
@@ -144,9 +168,9 @@ const validLogin = async (page) => {
  * @param  Object page
  * @return Array
  */
-const hasPasswordField = async (page) => {
+const hasPasswordField = async (page, resources) => {
   try {
-    await page.waitForSelector('input[name="password"]', { timeout: 5000 });
+    await page.waitForSelector(resources.input_pass, { timeout: 3000 });
     return true;
   } catch (e) {
     return false;
@@ -159,102 +183,14 @@ const hasPasswordField = async (page) => {
  * @param  Object page
  * @return Array
  */
-const hasPhoneField = async (page) => {
+const hasPhoneField = async (page, resources) => {
   try {
-    await page.waitForSelector('input[data-testid="ocfEnterTextTextInput"]', {
-      timeout: 5000,
+    await page.waitForSelector(resources.input_phone, {
+      timeout: 3000,
     });
     return true;
   } catch (e) {
     return false;
-  }
-};
-
-/**
- * Get proxy
- *
- * @return Array
- */
-const getProxy = async (key) => {
-  try {
-    console.log("Loading new proxy...");
-    await changeProxy(key);
-
-    const proxy = await axios.get(`http://api.proxyfb.com/api/getProxy.php`, {
-      params: {
-        key,
-      },
-      headers: {
-        accept: "application/json",
-      },
-    });
-
-    if (_.get(proxy, "data.success", false)) {
-      return proxy.data.proxy;
-    }
-
-    return null;
-  } catch (e) {
-    return null;
-  }
-};
-
-/**
- * Change proxy
- *
- * @return Array
- */
-const changeProxy = async (key) => {
-  try {
-    const change = await axios.get(
-      `http://api.proxyfb.com/api/changeProxy.php`,
-      {
-        params: {
-          key,
-        },
-        headers: {
-          accept: "application/json",
-        },
-      },
-    );
-
-    if (_.get(change, "data.success", false)) {
-      return change.data.proxy;
-    }
-
-    return null;
-  } catch (e) {
-    return null;
-  }
-};
-
-/**
- * Save logs
-
- * @type Void
- */
-const saveLogs = (email, file) => {
-  const createFiles = fs.createWriteStream(`./${file}`, {
-    flags: "a",
-  });
-
-  return createFiles.write(email + "\r\n");
-};
-
-/**
- * Get list emails
- *
- * @return Array
- */
-const listEmails = async (file) => {
-  try {
-    return (await fsp.readFile(file))
-      .toString()
-      .split("\n")
-      .map((i) => i.replace(/(\r\n|\n|\r)/gm, ""))
-      .filter((i) => i);
-  } catch (e) {
-    return [];
   }
 };
 
