@@ -81,7 +81,7 @@ const verifiedEmail = async (email, proxy, resources) => {
   }
 
   const browser = await puppeteer.launch({
-    headless: false,
+    headless: 'shell',
     args: options,
     defaultViewport: {
       width: 390,
@@ -91,6 +91,7 @@ const verifiedEmail = async (email, proxy, resources) => {
 
   try {
     const page = await browser.newPage();
+    await page.setUserAgent(fakeUserAgent());
     await page.goto(resources.verify_url, {
       waitUntil: ['domcontentloaded', 'networkidle0'],
     });
@@ -112,16 +113,17 @@ const verifiedEmail = async (email, proxy, resources) => {
       return false;
     }
 
+    // Save checked email
+    saveLogs(email, 'checked.txt');
+
     if (!isValidLogin && !isSuspicious) {
       console.log(clc.green(`Email available: ${email}`));
-      saveLogs(email, 'checked.txt');
       await browser.close();
       return true;
     }
 
     await browser.close();
     saveLogs(email, 'output.txt');
-    saveLogs(email, 'checked.txt');
     console.log(clc.red(`Email registered: ${email}`));
 
     return true;
@@ -129,6 +131,30 @@ const verifiedEmail = async (email, proxy, resources) => {
     await browser.close();
     return false;
   }
+};
+
+/**
+ * Random user agent
+ *
+ * @return String
+ */
+const fakeUserAgent = () => {
+  const userAgents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_16_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Mozilla/5.0 (X11; Fedora; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Mozilla/5.0 (X11; Debian; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+  ];
+
+  const randomIndex = Math.floor(Math.random() * userAgents.length);
+
+  return userAgents[randomIndex];
 };
 
 /**

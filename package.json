@@ -9,8 +9,7 @@
     "cli-color": "^2.0.4",
     "lodash": "^4.17.21",
     "ora": "^8.0.1",
-    "puppeteer": "^22.6.5",
-    "puppeteer-core": "^22.12.1",
+    "puppeteer": "22.12.1",
     "speakeasy": "^2.0.0"
   },
   "scripts": {
