@@ -98,14 +98,15 @@ const verifiedEmail = async (email, proxy, resources) => {
     await page.type(resources.input_email, email);
     await page.keyboard.press('Enter');
 
-    const [isValidLogin, isSuspicious] = (
+    const [isValidLogin, isSuspicious, isAuthenticate] = (
       await Promise.allSettled([
         validLogin(page, resources),
         suspicious(page, resources),
+        authenticate(page, resources),
       ])
     ).map((i) => _.get(i, 'value', false));
 
-    if (isSuspicious) {
+    if (isSuspicious || isAuthenticate) {
       console.log(clc.red('Suspicious login prevented.'));
       await browser.close();
       return false;
@@ -136,7 +137,7 @@ const verifiedEmail = async (email, proxy, resources) => {
  * @param  Object page
  * @return Boolean
  */
-export const suspicious = async (page, resources) => {
+const suspicious = async (page, resources) => {
   try {
     const element = await page.waitForSelector(resources.suspicious, {
       timeout: 3000,
@@ -144,6 +145,25 @@ export const suspicious = async (page, resources) => {
     const value = await element.evaluate((el) => el.textContent);
 
     return !!value && value === resources.suspicious_text;
+  } catch (e) {
+    return false;
+  }
+};
+
+/**
+ * Check require authenticate
+ *
+ * @param  Object page
+ * @return Boolean
+ */
+const authenticate = async (page, resources) => {
+  try {
+    const element = await page.waitForSelector(resources.authenticate, {
+      timeout: 3000,
+    });
+    const value = await element.evaluate((el) => el.textContent);
+
+    return !!value && value === resources.authenticate_text;
   } catch (e) {
     return false;
   }
