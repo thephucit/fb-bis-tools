@@ -20,7 +20,6 @@ const main = async () => {
   await welcomeMsg();
 
   // Load common resources
-  const key = process.argv[2];
   const resources = await loadCommonResources();
 
   if (_.isEmpty(resources)) {
