@@ -45,6 +45,33 @@ export const loadCommonResources = async (key) => {
 };
 
 /**
+ * Pick https proxy
+ *
+ * @param Number index
+ * @return String
+ */
+export const pickProxyHost = async (index) => {
+  const proxies = await readLine('proxies-https.txt');
+  const proxy = _.get(proxies, `[${index}]`, null);
+
+  if (!proxy) {
+    return {
+      host: null,
+      username: null,
+      password: null,
+    };
+  }
+
+  const config = proxy.split(':');
+  const host = `${config[0]}:${config[1]}`;
+  const username = config[2] ? config[2] : null;
+  const password = config[3] ? config[3] : null;
+  const resetKey = index >= proxies.length - 1 ? true : false;
+
+  return { resetKey, host, username, password };
+};
+
+/**
  * Pick proxy key
  *
  * @param Number index
@@ -63,7 +90,7 @@ export const pickProxyKey = async (index) => {
  *
  * @return Array
  */
-export const getProxy = async (key) => {
+export const getProxyByKey = async (key) => {
   try {
     console.log(clc.blue('Loading new proxy...'));
     await changeProxy(key);

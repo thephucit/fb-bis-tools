@@ -3,12 +3,13 @@ import clc from 'cli-color';
 import puppeteer from 'puppeteer';
 import {
   waitFor,
-  getProxy,
+  getProxyByKey,
   saveLogs,
   readLine,
   loadCommonResources,
   welcomeMsg,
   pickProxyKey,
+  pickProxyHost,
 } from './utils.js';
 
 /**
@@ -20,7 +21,9 @@ const main = async () => {
   await welcomeMsg();
 
   // Load common resources
+  const proxyType = process.argv[2]; // Allow values: --https|null
   const resources = await loadCommonResources();
+  const isHttpProxy = proxyType === '--https';
 
   if (_.isEmpty(resources)) {
     return console.log(clc.red('Missing common resources!'));
@@ -34,8 +37,20 @@ const main = async () => {
 
   let index = 0;
   for (const chunk of chunks) {
-    const { key, resetKey } = await pickProxyKey(index);
-    await runBatch(chunk, key, resources);
+    const {
+      key = null,
+      host = null,
+      username = null,
+      password = null,
+      resetKey = false,
+    } = isHttpProxy ? await pickProxyHost(index) : await pickProxyKey(index);
+
+    await runBatch(chunk, resources, {
+      key: isHttpProxy ? null : key,
+      host: isHttpProxy ? host : null,
+      username: isHttpProxy ? username : null,
+      password: isHttpProxy ? password : null,
+    });
 
     // reset or increase index
     if (resetKey) {
@@ -54,13 +69,24 @@ const main = async () => {
  * @param String email
  * @return Boolean
  */
-const runBatch = async (emails, key, resources) => {
-  const proxy = await getProxy(key);
-  console.log(clc.yellow(`Proxy: ${proxy}`));
+const runBatch = async (emails, resources, proxyConfig) => {
+  let {
+    key = null,
+    host = null,
+    username = null,
+    password = null,
+  } = proxyConfig;
+
+  host = _.isEmpty(key) ? host : await getProxyByKey(key);
+  console.log(clc.yellow(`Proxy: ${host}`));
   console.log('-----------------------------');
 
   const promises = emails.map((email) =>
-    verifiedEmail(email, proxy, resources),
+    verifiedEmail(email, resources, {
+      host: host,
+      username: username,
+      password: password,
+    }),
   );
   const responses = await Promise.all(promises);
 
@@ -68,7 +94,7 @@ const runBatch = async (emails, key, resources) => {
 
   await waitFor(resources.waitFor);
 
-  return runBatch(emails, key, resources);
+  return runBatch(emails, resources, proxyConfig);
 };
 
 /**
@@ -77,7 +103,7 @@ const runBatch = async (emails, key, resources) => {
  * @param String email
  * @return Boolean
  */
-const verifiedEmail = async (email, proxy, resources) => {
+const verifiedEmail = async (email, resources, proxy = {}) => {
   const options = [
     '--disable-notifications',
     '--no-sandbox',
@@ -85,8 +111,14 @@ const verifiedEmail = async (email, proxy, resources) => {
     '--window-size=390,840',
   ];
 
-  if (proxy) {
-    options.push(`--proxy-server=${proxy}`);
+  const { host = null, username = null, password = null } = proxy;
+
+  if (host) {
+    options.push(`--proxy-server=${host}`);
+  }
+
+  if (username && password) {
+    options.push(`--proxy-auth=${username}:${password}`);
   }
 
   const browser = await puppeteer.launch({
@@ -100,6 +132,14 @@ const verifiedEmail = async (email, proxy, resources) => {
 
   try {
     const page = await browser.newPage();
+
+    if (username && password) {
+      await page.authenticate({
+        username,
+        password,
+      });
+    }
+
     await page.setUserAgent(fakeUserAgent());
     await page.goto(resources.verify_url, {
       waitUntil: ['domcontentloaded', 'networkidle0'],
