@@ -45,6 +45,28 @@ export const loadCommonResources = async (key) => {
 };
 
 /**
+ * Get list http proxy
+ *
+ * @param Number index
+ * @return String
+ */
+export const listHttpProxy = async () => {
+  const proxies = await readLine('proxies-https.txt');
+  const responses = [];
+
+  for (const proxy of proxies) {
+    const config = proxy.split(':');
+    const host = `${config[0]}:${config[1]}`;
+    const username = config[2] ? config[2] : null;
+    const password = config[3] ? config[3] : null;
+
+    responses.push({ host, username, password });
+  }
+
+  return responses;
+};
+
+/**
  * Pick https proxy
  *
  * @param Number index
