@@ -5,9 +5,10 @@ import {
   waitFor,
   getProxy,
   saveLogs,
-  listEmails,
+  readLine,
   loadCommonResources,
   welcomeMsg,
+  pickProxyKey,
 } from './utils.js';
 
 /**
@@ -26,14 +27,23 @@ const main = async () => {
     return console.log(clc.red('Missing common resources!'));
   }
 
-  const checked = await listEmails('checked.txt');
-  const emails = (await listEmails('emails.txt')).filter(
+  const checked = await readLine('checked.txt');
+  const emails = (await readLine('emails.txt')).filter(
     (i) => !checked.includes(i),
   );
   const chunks = _.chunk(emails, 10);
 
+  let index = 0;
   for (const chunk of chunks) {
+    const { key, resetKey } = await pickProxyKey(index);
     await runBatch(chunk, key, resources);
+
+    // reset or increase index
+    if (resetKey) {
+      index = 0;
+    } else {
+      index++;
+    }
   }
 
   return console.log(clc.green('Done!'));

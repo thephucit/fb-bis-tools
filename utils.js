@@ -45,6 +45,20 @@ export const loadCommonResources = async (key) => {
 };
 
 /**
+ * Pick proxy key
+ *
+ * @param Number index
+ * @return String
+ */
+export const pickProxyKey = async (index) => {
+  const proxies = await readLine('proxies.txt');
+  const key = _.get(proxies, `[${index}]`, null);
+  const resetKey = index >= proxies.length - 1 ? true : false;
+
+  return { key, resetKey };
+};
+
+/**
  * Get proxy
  *
  * @return Array
@@ -120,7 +134,7 @@ export const saveLogs = (email, file) => {
  *
  * @return Array
  */
-export const listEmails = async (file) => {
+export const readLine = async (file) => {
   try {
     return (await fsp.readFile(file))
       .toString()
