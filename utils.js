@@ -19,6 +19,19 @@ export const waitFor = (ms) => {
 };
 
 /**
+ * Safety parse json
+ *
+ * @param content
+ */
+export const safeParseJson = (content) => {
+  try {
+    return JSON.parse(content);
+  } catch (e) {
+    return {};
+  }
+};
+
+/**
  * Load common resources
  *
  * @return Array
