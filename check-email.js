@@ -2,9 +2,7 @@ import _ from 'lodash';
 import clc from 'cli-color';
 import puppeteer from 'puppeteer';
 import {
-  waitFor,
   getProxyByKey,
-  saveLogs,
   readLine,
   loadCommonResources,
   welcomeMsg,

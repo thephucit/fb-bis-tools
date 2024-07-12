@@ -2,7 +2,6 @@ import _ from 'lodash';
 import clc from 'cli-color';
 import puppeteer from 'puppeteer';
 import {
-  saveLogs,
   readLine,
   loadCommonResources,
   welcomeMsg,
